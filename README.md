@@ -1,7 +1,7 @@
 Command-line application implementing Python's binascii.{un,}hexlify. Use it as you would use base64.
 
 ```
-hexlify --help                                                              130 ↵
+$ hexlify --help
 hexlify 0.0.1
 
 Perform bytes-to-hexstring conversion and vice-versa as implemented
