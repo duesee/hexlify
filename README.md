@@ -8,7 +8,7 @@ Perform bytes-to-hexstring conversion and vice-versa as implemented
 in Python's binascii.{un,}hexlify. Read from stdin if <file> is "-"
 or not specified. Whitespace is ignored during decoding.
 
-Usage: monitor [options] [<file>]
+Usage: hexlify [options] [<file>]
 
 Options:
   -d --decode          Decode stream.
