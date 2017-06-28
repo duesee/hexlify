@@ -1,22 +1,31 @@
+extern crate docopt;
 #[macro_use]
 extern crate serde_derive;
-extern crate docopt;
+#[macro_use]
+extern crate error_chain;
 
 use docopt::Docopt;
-use std::{fmt, process};
-use std::ascii::AsciiExt;
-use std::error::Error;
 use std::fs::File;
-use std::io::{Read, Write, stdin, stdout};
+use std::io::{Read, Write, stdin, stdout, stderr};
 
-const USAGE: &'static str = "
+mod errors {
+    error_chain!{
+        foreign_links {
+            Io(::std::io::Error);
+        }
+    }
+}
+
+use errors::*;
+
+const USAGE: &str = "
 hexlify 0.0.1
 
 Perform bytes-to-hexstring conversion and vice-versa as implemented
 in Python's binascii.{un,}hexlify. Read from stdin if <file> is \"-\"
 or not specified. Whitespace is ignored during decoding.
 
-Usage: monitor [options] [<file>]
+Usage: hexlify [options] [<file>]
 
 Options:
   -d --decode          Decode stream.
@@ -24,62 +33,44 @@ Options:
   -h --help            Show this help screen.
 ";
 
-#[derive(Debug, Deserialize)]
+const ERR_NOT_IN_HEX: &str = "\
+Character does not match hex-alphabet. Only a-z, A-Z and 0-9 are allowed.
+Make sure not to confuse decoding with encoding or use -i to ignore non-hex characters.\
+";
+
+const ERR_ODD_CHARS: &str = "\
+Input had odd number of characters, please be cautious.\
+";
+
+#[derive(Deserialize)]
 struct Args {
     arg_file: Option<String>,
     flag_decode: bool,
     flag_ignore_garbage: bool,
 }
 
-#[derive(Debug)]
-struct CliError {
-    cause: String,
-}
-
-impl CliError {
-    fn new(cause: &str) -> CliError {
-        CliError { cause: cause.into() }
+fn to_hex_value(c: u8) -> Result<u8> {
+    match c as char {
+        '0'...'9' => Ok(c - '0' as u8),
+        'a'...'f' => Ok(c - 'a' as u8 + 10),
+        'A'...'F' => Ok(c - 'A' as u8 + 10),
+        _ => Err(ERR_NOT_IN_HEX.into()),
     }
 }
 
-impl fmt::Display for CliError {
-    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        write!(f, "{}", self.cause)
-    }
-}
-
-impl Error for CliError {
-    fn description(&self) -> &str {
-        &self.cause
-    }
-
-    fn cause(&self) -> Option<&Error> {
-        None
-    }
-}
-
-fn to_hex_value(c: char) -> Result<u8, Box<Error>> {
-    let c = c.to_ascii_lowercase();
-    if '0' <= c && c <= '9' {
-        return Ok(c as u8 - '0' as u8);
-    }
-    if 'a' <= c && c <= 'f' {
-        return Ok(c as u8 - 'a' as u8 + 10);
-    }
-    Err(Box::new(CliError::new("Each character must match hex alphabet, i.e. a-z, A-Z or 0-9. Use -i to ignore non-hex characters.",),),)
-}
-
-fn pair_to_hex(pair: &[char; 2]) -> Result<u8, Box<Error>> {
+fn pair_to_hex(pair: &[u8; 2]) -> Result<u8> {
     let l = to_hex_value(pair[0])?;
     let r = to_hex_value(pair[1])?;
     Ok(l * 16 + r)
 }
 
-fn run(file: Option<String>, decode: bool, ignore_garbage: bool) -> Result<(), Box<Error>> {
+fn run(file: Option<String>, decode: bool, ignore_garbage: bool) -> Result<()> {
     let src: Box<Read> = match file {
         Some(path) => {
             if path != "-" {
-                Box::new(File::open(path)?)
+                Box::new(File::open(&path).chain_err(
+                    || format!("can't open \"{}\"", path),
+                )?)
             } else {
                 Box::new(stdin())
             }
@@ -89,14 +80,16 @@ fn run(file: Option<String>, decode: bool, ignore_garbage: bool) -> Result<(), B
 
     if decode {
         let mut side = 0;
-        let mut pair = [0 as char; 2];
+        let mut pair = [0 as u8; 2];
 
         for byte in src.bytes() {
-            let byte = byte? as char;
-            if byte.is_whitespace() {
+            let byte = byte?;
+
+            if (byte as char).is_whitespace() {
                 continue;
             }
-            if ignore_garbage && to_hex_value(byte).is_err() {
+
+            if to_hex_value(byte).is_err() && ignore_garbage {
                 continue;
             }
 
@@ -111,7 +104,8 @@ fn run(file: Option<String>, decode: bool, ignore_garbage: bool) -> Result<(), B
         }
 
         if side == 1 {
-            return Err(Box::new(CliError::new("Input stream must contain even number of characters. The last incomplete hex-pair was omitted.",),),);
+            stdout().flush()?;
+            return Err(ERR_ODD_CHARS.into());
         }
     } else {
         for byte in src.bytes() {
@@ -127,8 +121,50 @@ fn main() {
         .and_then(|d| d.deserialize())
         .unwrap_or_else(|e| e.exit());
 
-    run(args.arg_file, args.flag_decode, args.flag_ignore_garbage).unwrap_or_else(|e| {
-        writeln!(&mut std::io::stderr(), "{}", e).unwrap();
-        process::exit(1);
-    });
+    if let Err(ref e) = run(args.arg_file, args.flag_decode, args.flag_ignore_garbage) {
+        writeln!(stderr(), "error: {}", e).unwrap();
+
+        for e in e.iter().skip(1) {
+            writeln!(stderr(), "caused by: {}", e).unwrap();
+        }
+
+        if let Some(backtrace) = e.backtrace() {
+            writeln!(stderr(), "backtrace: {:?}", backtrace).unwrap();
+        }
+
+        ::std::process::exit(1);
+    }
+}
+
+#[cfg(test)]
+mod test {
+    use super::{to_hex_value, pair_to_hex};
+
+    #[test]
+    fn test_to_hex_value() {
+        assert_eq!(to_hex_value('0' as u8).unwrap(), 0);
+        assert_eq!(to_hex_value('9' as u8).unwrap(), 9);
+        assert_eq!(to_hex_value('a' as u8).unwrap(), 10);
+        assert_eq!(to_hex_value('f' as u8).unwrap(), 15);
+        assert_eq!(to_hex_value('A' as u8).unwrap(), 10);
+        assert_eq!(to_hex_value('F' as u8).unwrap(), 15);
+    }
+
+    #[test]
+    fn test_pair_to_hex() {
+        assert_eq!(pair_to_hex(&['0' as u8, '0' as u8]).unwrap(), 0x00);
+        assert_eq!(pair_to_hex(&['a' as u8, 'a' as u8]).unwrap(), 0xAA);
+        assert_eq!(pair_to_hex(&['A' as u8, 'A' as u8]).unwrap(), 0xAA);
+        assert_eq!(pair_to_hex(&['f' as u8, 'f' as u8]).unwrap(), 0xFF);
+        assert_eq!(pair_to_hex(&['F' as u8, 'F' as u8]).unwrap(), 0xFF);
+
+        assert!(pair_to_hex(&['0' as u8, '/' as u8]).is_err());
+        assert!(pair_to_hex(&['0' as u8, ':' as u8]).is_err());
+
+        assert!(pair_to_hex(&['0' as u8, '`' as u8]).is_err());
+        assert!(pair_to_hex(&['0' as u8, 'g' as u8]).is_err());
+
+        assert!(pair_to_hex(&['0' as u8, '@' as u8]).is_err());
+        assert!(pair_to_hex(&['0' as u8, 'G' as u8]).is_err());
+    }
 }
