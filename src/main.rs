@@ -64,13 +64,52 @@ fn pair_to_hex(pair: &[u8; 2]) -> Result<u8> {
     Ok(l * 16 + r)
 }
 
-fn run(file: Option<String>, decode: bool, ignore_garbage: bool) -> Result<()> {
-    let src: Box<Read> = match file {
+fn decode<R: Read, W: Write>(src: &mut R, dst: &mut W, ignore_garbage: bool) -> Result<()> {
+    let mut side = 0;
+    let mut pair = [0 as u8; 2];
+
+    for byte in src.bytes() {
+        let byte = byte?;
+
+        if (byte as char).is_whitespace() {
+            continue;
+        }
+
+        if to_hex_value(byte).is_err() && ignore_garbage {
+            continue;
+        }
+
+        pair[side] = byte;
+
+        if side == 0 {
+            side = 1;
+        } else {
+            dst.write(&[pair_to_hex(&pair)?])?;
+            side = 0;
+        }
+    }
+
+    if side == 1 {
+        return Err(ERR_ODD_CHARS.into());
+    }
+    
+    Ok(())
+}
+
+fn encode<R: Read, W: Write>(src: &mut R, dst: &mut W) -> Result<()> {
+    for byte in src.bytes() {
+        write!(dst, "{:02X}", byte?)?;
+    }
+    
+    Ok(())
+}
+
+fn run(file: Option<String>, flag_decode: bool, flag_ignore_garbage: bool) -> Result<()> {
+    // Choose input (file or stdin)
+    let mut src: Box<Read> = match file {
         Some(path) => {
             if path != "-" {
-                Box::new(File::open(&path).chain_err(
-                    || format!("can't open \"{}\"", path),
-                )?)
+                Box::new(File::open(&path).chain_err(|| format!("can't open \"{}\"", path))?)
             } else {
                 Box::new(stdin())
             }
@@ -78,39 +117,13 @@ fn run(file: Option<String>, decode: bool, ignore_garbage: bool) -> Result<()> {
         None => Box::new(stdin()),
     };
 
-    if decode {
-        let mut side = 0;
-        let mut pair = [0 as u8; 2];
+    // Choose output (stdout)
+    let mut dst = stdout();
 
-        for byte in src.bytes() {
-            let byte = byte?;
-
-            if (byte as char).is_whitespace() {
-                continue;
-            }
-
-            if to_hex_value(byte).is_err() && ignore_garbage {
-                continue;
-            }
-
-            pair[side] = byte;
-
-            if side == 0 {
-                side = 1;
-            } else {
-                stdout().write(&[pair_to_hex(&pair)?])?;
-                side = 0;
-            }
-        }
-
-        if side == 1 {
-            stdout().flush()?;
-            return Err(ERR_ODD_CHARS.into());
-        }
+    if flag_decode {
+        decode(&mut src, &mut dst, flag_ignore_garbage)?;
     } else {
-        for byte in src.bytes() {
-            print!("{:02X}", byte?);
-        }
+        encode(&mut src, &mut dst)?;
     }
 
     Ok(())
@@ -138,7 +151,7 @@ fn main() {
 
 #[cfg(test)]
 mod test {
-    use super::{to_hex_value, pair_to_hex};
+    use super::*;
 
     #[test]
     fn test_to_hex_value() {
@@ -153,6 +166,7 @@ mod test {
     #[test]
     fn test_pair_to_hex() {
         assert_eq!(pair_to_hex(&['0' as u8, '0' as u8]).unwrap(), 0x00);
+        assert_eq!(pair_to_hex(&['9' as u8, '9' as u8]).unwrap(), 0x99);
         assert_eq!(pair_to_hex(&['a' as u8, 'a' as u8]).unwrap(), 0xAA);
         assert_eq!(pair_to_hex(&['A' as u8, 'A' as u8]).unwrap(), 0xAA);
         assert_eq!(pair_to_hex(&['f' as u8, 'f' as u8]).unwrap(), 0xFF);
@@ -166,5 +180,53 @@ mod test {
 
         assert!(pair_to_hex(&['0' as u8, '@' as u8]).is_err());
         assert!(pair_to_hex(&['0' as u8, 'G' as u8]).is_err());
+    }
+    
+    #[test]
+    fn test_decode() {
+        let samples = vec![
+            ("AA", vec![0xAA]),
+            ("AABB", vec![0xAA, 0xBB]),
+            ("AABBCCD", vec![0xAA, 0xBB, 0xCC]),
+            ("AABBCCDD", vec![0xAA, 0xBB, 0xCC, 0xDD]),
+            ("00gf", vec![0x00]),
+            ("00g  ff", vec![0x00, 0xff]),
+            ("---f-..,f aa b", vec![0xff, 0xaa]),
+            ("²¹²³fa„“", vec![0xfa]),
+            ("¹¸^afg01", vec![0xaf, 0x01]),
+            ("´#*-_ff:;:;:1234", vec![0xff, 0x12, 0x34]),
+            ("", vec![]),
+            ("a1¹²}ff™± ¡¿⅛°±£™⅞`ff¿¡⅛°±£™01`", vec![0xa1, 0xff, 0xff, 0x01]),
+        ];
+ 
+        for (mut sample, expected) in samples.into_iter().map(|(s, e)| (std::io::Cursor::new(s), e)) {
+            let got = {
+                let mut tmp = Vec::new();
+                let _ = decode(&mut sample, &mut tmp, true);
+                tmp
+            };
+            
+            assert_eq!(expected, got);
+        }
+    }
+    
+    #[test]
+    fn test_encode() {
+        let samples = vec![
+            (vec![], ""),
+            (vec![0x00], "00"),
+            (vec![0x00, 0x99, 0xAA, 0xFF], "0099AAFF"),
+            (vec![0x00, 0x99, 0xAA, 0xFF, 0x00, 0x00], "0099AAFF0000"),
+        ];
+ 
+        for (mut sample, expected) in samples.into_iter().map(|(s, e)| (std::io::Cursor::new(s), e)) {
+            let got = {
+                let mut tmp = Vec::new();
+                let _ = encode(&mut sample, &mut tmp);
+                String::from_utf8(tmp).unwrap()
+            };
+            
+            assert_eq!(expected, got);
+        }
     }
 }
