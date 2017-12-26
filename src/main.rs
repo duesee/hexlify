@@ -34,7 +34,7 @@ Options:
 ";
 
 const ERR_NOT_IN_HEX: &str = "\
-Character does not match hex-alphabet. Only a-z, A-Z and 0-9 are allowed.
+Character does not match hex-alphabet. Only 0-9, a-f and A-F are allowed.
 Make sure not to confuse decoding with encoding or use -i to ignore non-hex characters.\
 ";
 
