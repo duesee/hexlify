@@ -19,7 +19,7 @@ mod errors {
 use errors::*;
 
 const USAGE: &str = "
-hexlify 0.0.1
+hexlify
 
 Perform bytes-to-hexstring conversion and vice-versa as implemented
 in Python's binascii.{un,}hexlify. Read from stdin if <file> is \"-\"
@@ -41,6 +41,9 @@ Make sure not to confuse decoding with encoding or use -i to ignore non-hex char
 const ERR_ODD_CHARS: &str = "\
 Input had odd number of characters, please be cautious.\
 ";
+
+// Get version from Cargo.toml
+const VERSION: &str = env!("CARGO_PKG_VERSION");
 
 #[derive(Deserialize)]
 struct Args {
@@ -131,7 +134,7 @@ fn run(file: Option<String>, flag_decode: bool, flag_ignore_garbage: bool) -> Re
 
 fn main() {
     let args: Args = Docopt::new(USAGE)
-        .and_then(|d| d.deserialize())
+        .and_then(|d| d.version(Some(VERSION.into())).deserialize())
         .unwrap_or_else(|e| e.exit());
 
     if let Err(ref e) = run(args.arg_file, args.flag_decode, args.flag_ignore_garbage) {
