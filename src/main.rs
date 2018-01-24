@@ -7,6 +7,7 @@ extern crate error_chain;
 use docopt::Docopt;
 use std::fs::File;
 use std::io::{Read, Write, stdin, stdout, stderr};
+use std::path::Path;
 
 mod errors {
     error_chain!{
@@ -25,12 +26,16 @@ Perform bytes-to-hexstring conversion and vice-versa as implemented
 in Python's binascii.{un,}hexlify. Read from stdin if <file> is \"-\"
 or not specified. Whitespace is ignored during decoding.
 
-Usage: hexlify [options] [<file>]
+Usage:
+  hexlify [options] [<file>]
+  hexlify (-h | --help)
+  hexlify --version
 
 Options:
   -d --decode          Decode stream.
   -i --ignore-garbage  Ignore non-hex values.
-  -h --help            Show this help screen.
+  -h --help            Show this screen.
+  --version            Show version.
 ";
 
 const ERR_NOT_IN_HEX: &str = "\
@@ -133,9 +138,22 @@ fn run(file: Option<String>, flag_decode: bool, flag_ignore_garbage: bool) -> Re
 }
 
 fn main() {
-    let args: Args = Docopt::new(USAGE)
+    let mut args: Args = Docopt::new(USAGE)
         .and_then(|d| d.version(Some(VERSION.into())).deserialize())
         .unwrap_or_else(|e| e.exit());
+
+    // TODO: provide symlinks in package, e.g. via AUR?
+    if let Some(name) = std::env::args().next() {
+        if let Some(name) = Path::new(&name).file_name() {
+            if name == "unhexlify" {
+                args.flag_decode = true;
+            }
+        } else {
+            panic!("unknown argument environment")
+        }
+    } else {
+        panic!("unknown argument environment")
+    }
 
     if let Err(ref e) = run(args.arg_file, args.flag_decode, args.flag_ignore_garbage) {
         writeln!(stderr(), "error: {}", e).unwrap();
