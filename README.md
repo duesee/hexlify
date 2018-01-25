@@ -1,6 +1,17 @@
-Command-line application implementing Python's binascii.{un,}hexlify. Use it as you would use base64.
+### Hexlify
 
+Command-line application implementing bytes-to-hexstring conversion and vice-versa.
 When called as "unhexlify" (e.g. via a symlink), the -d flag is set automatically.
+
+Otherwise, use it as you would use base64.
+
+### Install via AUR (Arch Linux)
+
+```
+$ pacaur -S hexlify-git
+```
+
+### Help
 
 ```
 hexlify
@@ -19,14 +30,23 @@ Options:
   -i --ignore-garbage  Ignore non-hex values.
   -h --help            Show this screen.
   --version            Show version.
-```
-
-Examples:
 
 ```
-$ echo "00fF22" | hexlify -d | xxd -g1
-00000000: 00 ff 22                                         .."
+
+### Examples
+
 ```
+$ echo "Hello, World" | xxd -g1
+00000000: 48 65 6c 6c 6f 2c 20 57 6f 72 6c 64 0a           Hello, World.
+
+$ echo "Hello, World" | hexlify
+48656C6C6F2C20576F726C640A
+
+$ echo "48656C6C6F2C20576F726C640A" | hexlify -d
+Hello, World
+```
+
+Copy-paste works as expected. Paste some hexstring and finish with Ctrl-D.
 
 ```
 $ hexlify -d | openssl asn1parse -inform der -i -dump
