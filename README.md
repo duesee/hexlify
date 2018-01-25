@@ -1,19 +1,24 @@
 Command-line application implementing Python's binascii.{un,}hexlify. Use it as you would use base64.
 
+When called as "unhexlify" (e.g. via a symlink), the -d flag is set automatically.
+
 ```
-$ hexlify --help
-hexlify 0.0.1
+hexlify
 
 Perform bytes-to-hexstring conversion and vice-versa as implemented
 in Python's binascii.{un,}hexlify. Read from stdin if <file> is "-"
 or not specified. Whitespace is ignored during decoding.
 
-Usage: hexlify [options] [<file>]
+Usage:
+  hexlify [options] [<file>]
+  hexlify (-h | --help)
+  hexlify --version
 
 Options:
   -d --decode          Decode stream.
   -i --ignore-garbage  Ignore non-hex values.
-  -h --help            Show this help screen.
+  -h --help            Show this screen.
+  --version            Show version.
 ```
 
 Examples:
