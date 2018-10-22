@@ -1,23 +1,12 @@
 extern crate docopt;
 #[macro_use]
 extern crate serde_derive;
-#[macro_use]
-extern crate error_chain;
 
 use docopt::Docopt;
 use std::fs::File;
-use std::io::{Read, Write, stdin, stdout, stderr};
+use std::io;
+use std::io::{Read, Write, stdin, stdout};
 use std::path::Path;
-
-mod errors {
-    error_chain!{
-        foreign_links {
-            Io(::std::io::Error);
-        }
-    }
-}
-
-use errors::*;
 
 const USAGE: &str = "
 hexlify
@@ -57,22 +46,24 @@ struct Args {
     flag_ignore_garbage: bool,
 }
 
-fn to_hex_value(c: u8) -> Result<u8> {
+fn to_hex_value(c: u8) -> Option<u8> {
     match c as char {
-        '0'...'9' => Ok(c - '0' as u8),
-        'a'...'f' => Ok(c - 'a' as u8 + 10),
-        'A'...'F' => Ok(c - 'A' as u8 + 10),
-        _ => Err(ERR_NOT_IN_HEX.into()),
+        '0'...'9' => Some(c - '0' as u8),
+        'a'...'f' => Some(c - 'a' as u8 + 10),
+        'A'...'F' => Some(c - 'A' as u8 + 10),
+        _ => None,
     }
 }
 
-fn pair_to_hex(pair: &[u8; 2]) -> Result<u8> {
-    let l = to_hex_value(pair[0])?;
-    let r = to_hex_value(pair[1])?;
-    Ok(l * 16 + r)
+fn pair_to_hex(pair: &[u8; 2]) -> Option<u8> {
+    if let (Some(l), Some(r)) = (to_hex_value(pair[0]), to_hex_value(pair[1])) {
+        Some(l * 16 + r)
+    } else {
+        None
+    }
 }
 
-fn decode<R: Read, W: Write>(src: &mut R, dst: &mut W, ignore_garbage: bool) -> Result<()> {
+fn decode<R: Read, W: Write>(src: &mut R, dst: &mut W, ignore_garbage: bool) -> io::Result<()> {
     let mut side = 0;
     let mut pair = [0 as u8; 2];
 
@@ -83,8 +74,12 @@ fn decode<R: Read, W: Write>(src: &mut R, dst: &mut W, ignore_garbage: bool) -> 
             continue;
         }
 
-        if to_hex_value(byte).is_err() && ignore_garbage {
-            continue;
+        if to_hex_value(byte).is_none() {
+            if ignore_garbage {
+                continue;
+            } else {
+                return Err(io::Error::new(io::ErrorKind::InvalidInput, ERR_NOT_IN_HEX.to_owned()));
+            }
         }
 
         pair[side] = byte;
@@ -92,19 +87,19 @@ fn decode<R: Read, W: Write>(src: &mut R, dst: &mut W, ignore_garbage: bool) -> 
         if side == 0 {
             side = 1;
         } else {
-            dst.write(&[pair_to_hex(&pair)?])?;
+            dst.write(&[pair_to_hex(&pair).unwrap()])?;
             side = 0;
         }
     }
 
     if side == 1 {
-        return Err(ERR_ODD_CHARS.into());
+        return Err(io::Error::new(io::ErrorKind::UnexpectedEof, ERR_ODD_CHARS.to_owned()));
     }
     
     Ok(())
 }
 
-fn encode<R: Read, W: Write>(src: &mut R, dst: &mut W) -> Result<()> {
+fn encode<R: Read, W: Write>(src: &mut R, dst: &mut W) -> io::Result<()> {
     for byte in src.bytes() {
         write!(dst, "{:02X}", byte?)?;
     }
@@ -112,12 +107,12 @@ fn encode<R: Read, W: Write>(src: &mut R, dst: &mut W) -> Result<()> {
     Ok(())
 }
 
-fn run(file: Option<String>, flag_decode: bool, flag_ignore_garbage: bool) -> Result<()> {
+fn run(file: Option<String>, flag_decode: bool, flag_ignore_garbage: bool) -> io::Result<()> {
     // Choose input (file or stdin)
     let mut src: Box<Read> = match file {
         Some(path) => {
             if path != "-" {
-                Box::new(File::open(&path).chain_err(|| format!("can't open \"{}\"", path))?)
+                Box::new(File::open(&path)?)
             } else {
                 Box::new(stdin())
             }
@@ -155,19 +150,11 @@ fn main() {
         panic!("unknown argument environment")
     }
 
-    if let Err(ref e) = run(args.arg_file, args.flag_decode, args.flag_ignore_garbage) {
-        writeln!(stderr(), "error: {}", e).unwrap();
-
-        for e in e.iter().skip(1) {
-            writeln!(stderr(), "caused by: {}", e).unwrap();
-        }
-
-        if let Some(backtrace) = e.backtrace() {
-            writeln!(stderr(), "backtrace: {:?}", backtrace).unwrap();
-        }
-
-        ::std::process::exit(1);
-    }
+    run(args.arg_file, args.flag_decode, args.flag_ignore_garbage)
+        .unwrap_or_else(|err| {
+            eprintln!("{}", err);
+            std::process::exit(1);
+        })
 }
 
 #[cfg(test)]
@@ -193,14 +180,14 @@ mod test {
         assert_eq!(pair_to_hex(&['f' as u8, 'f' as u8]).unwrap(), 0xFF);
         assert_eq!(pair_to_hex(&['F' as u8, 'F' as u8]).unwrap(), 0xFF);
 
-        assert!(pair_to_hex(&['0' as u8, '/' as u8]).is_err());
-        assert!(pair_to_hex(&['0' as u8, ':' as u8]).is_err());
+        assert!(pair_to_hex(&['0' as u8, '/' as u8]).is_none());
+        assert!(pair_to_hex(&['0' as u8, ':' as u8]).is_none());
 
-        assert!(pair_to_hex(&['0' as u8, '`' as u8]).is_err());
-        assert!(pair_to_hex(&['0' as u8, 'g' as u8]).is_err());
+        assert!(pair_to_hex(&['0' as u8, '`' as u8]).is_none());
+        assert!(pair_to_hex(&['0' as u8, 'g' as u8]).is_none());
 
-        assert!(pair_to_hex(&['0' as u8, '@' as u8]).is_err());
-        assert!(pair_to_hex(&['0' as u8, 'G' as u8]).is_err());
+        assert!(pair_to_hex(&['0' as u8, '@' as u8]).is_none());
+        assert!(pair_to_hex(&['0' as u8, 'G' as u8]).is_none());
     }
     
     #[test]

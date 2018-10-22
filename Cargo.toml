@@ -1,10 +1,9 @@
 [package]
 name = "hexlify"
-version = "0.5.0"
+version = "0.6.0"
 authors = ["Damian Poddebniak <poddebniak@fh-muenster.de>"]
 
 [dependencies]
 docopt = "*"
-error-chain = "*"
 serde = "*"
 serde_derive = "*"
