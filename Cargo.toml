@@ -1,7 +1,8 @@
 [package]
 name = "hexlify"
-version = "0.6.0"
+version = "0.7.0"
 authors = ["Damian Poddebniak <poddebniak@fh-muenster.de>"]
+edition = "2018"
 
 [dependencies]
 docopt = "*"
