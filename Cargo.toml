@@ -1,6 +1,6 @@
 [package]
 name = "hexlify"
-version = "0.7.0"
+version = "0.7.1"
 authors = ["Damian Poddebniak <poddebniak@fh-muenster.de>"]
 edition = "2018"
 
