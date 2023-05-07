@@ -5,10 +5,10 @@ extern crate serde_derive;
 use docopt::Docopt;
 use std::fs::File;
 use std::io;
-use std::io::{Read, stdin, stdout};
+use std::io::{stdin, stdout, Read};
 use std::path::Path;
 
-use hexlify::{encode, decode};
+use hexlify::{decode, encode};
 
 const USAGE: &str = "
 hexlify
@@ -82,9 +82,8 @@ fn main() {
         panic!("unknown argument environment")
     }
 
-    run(args.arg_file, args.flag_decode, args.flag_ignore_garbage)
-        .unwrap_or_else(|err| {
-            eprintln!("{}", err);
-            std::process::exit(1);
-        })
+    run(args.arg_file, args.flag_decode, args.flag_ignore_garbage).unwrap_or_else(|err| {
+        eprintln!("{}", err);
+        std::process::exit(1);
+    })
 }
