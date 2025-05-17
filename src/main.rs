@@ -1,54 +1,44 @@
-extern crate docopt;
-#[macro_use]
-extern crate serde_derive;
+use std::{
+    fs::File,
+    io::{self, Read, stdin, stdout},
+    path::Path,
+};
 
-use docopt::Docopt;
-use std::fs::File;
-use std::io;
-use std::io::{stdin, stdout, Read};
-use std::path::Path;
+use argh::FromArgs;
 
 use hexlify::{decode, encode};
 
-const USAGE: &str = "
-hexlify
+#[derive(FromArgs)]
+/// (un)hexlify
+///
+/// Perform bytes-to-hexstring conversion and vice-versa as implemented
+/// in, e.g., Python's binascii.{un,}hexlify. Read from stdin if <file>
+/// is not specified. Whitespace is ignored during decoding.
+struct Args {
+    /// decode stream
+    #[argh(switch, short = 'd')]
+    decode: bool,
 
-Perform bytes-to-hexstring conversion and vice-versa as implemented
-in Python's binascii.{un,}hexlify. Read from stdin if <file> is \"-\"
-or not specified. Whitespace is ignored during decoding.
+    /// ignore non-hex values
+    #[argh(switch, short = 'i')]
+    ignore_garbage: bool,
 
-Usage:
-  hexlify [options] [<file>]
-  hexlify (-h | --help)
-  hexlify --version
+    /// show version
+    #[argh(switch)]
+    version: bool,
 
-Options:
-  -d --decode          Decode stream.
-  -i --ignore-garbage  Ignore non-hex values.
-  -h --help            Show this screen.
-  --version            Show version.
-";
+    /// file
+    #[argh(positional)]
+    file: Option<String>,
+}
 
 // Get version from Cargo.toml
 const VERSION: &str = env!("CARGO_PKG_VERSION");
 
-#[derive(Deserialize)]
-struct Args {
-    arg_file: Option<String>,
-    flag_decode: bool,
-    flag_ignore_garbage: bool,
-}
-
 fn run(file: Option<String>, flag_decode: bool, flag_ignore_garbage: bool) -> io::Result<()> {
     // Choose input (file or stdin)
-    let mut src: Box<Read> = match file {
-        Some(path) => {
-            if path != "-" {
-                Box::new(File::open(&path)?)
-            } else {
-                Box::new(stdin())
-            }
-        }
+    let mut src: Box<dyn Read> = match file {
+        Some(path) => Box::new(File::open(&path)?),
         None => Box::new(stdin()),
     };
 
@@ -65,15 +55,18 @@ fn run(file: Option<String>, flag_decode: bool, flag_ignore_garbage: bool) -> io
 }
 
 fn main() {
-    let mut args: Args = Docopt::new(USAGE)
-        .and_then(|d| d.version(Some(VERSION.into())).deserialize())
-        .unwrap_or_else(|e| e.exit());
+    let mut args: Args = argh::from_env();
 
-    // TODO: provide symlinks in package, e.g. via AUR?
+    if args.version {
+        println!("{VERSION}");
+        return;
+    }
+
+    // Decode when called as `unhexlify` (e.g., via symlink).
     if let Some(name) = std::env::args().next() {
         if let Some(name) = Path::new(&name).file_name() {
             if name == "unhexlify" {
-                args.flag_decode = true;
+                args.decode = true;
             }
         } else {
             panic!("unknown argument environment")
@@ -82,7 +75,7 @@ fn main() {
         panic!("unknown argument environment")
     }
 
-    run(args.arg_file, args.flag_decode, args.flag_ignore_garbage).unwrap_or_else(|err| {
+    run(args.file, args.decode, args.ignore_garbage).unwrap_or_else(|err| {
         eprintln!("{}", err);
         std::process::exit(1);
     })

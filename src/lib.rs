@@ -11,9 +11,9 @@ Input had odd number of characters, please be cautious.\
 
 fn to_hex_value(c: u8) -> Option<u8> {
     match c as char {
-        '0'...'9' => Some(c - '0' as u8),
-        'a'...'f' => Some(c - 'a' as u8 + 10),
-        'A'...'F' => Some(c - 'A' as u8 + 10),
+        '0'..='9' => Some(c - '0' as u8),
+        'a'..='f' => Some(c - 'a' as u8 + 10),
+        'A'..='F' => Some(c - 'A' as u8 + 10),
         _ => None,
     }
 }

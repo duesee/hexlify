@@ -1,10 +1,8 @@
 [package]
 name = "hexlify"
-version = "0.7.1"
-authors = ["Damian Poddebniak <poddebniak@fh-muenster.de>"]
-edition = "2018"
+version = "0.8.0"
+authors = ["Damian Poddebniak <poddebniak@mailbox.org>"]
+edition = "2024"
 
 [dependencies]
-docopt = "*"
-serde = "*"
-serde_derive = "*"
+argh = "0.1.13"
