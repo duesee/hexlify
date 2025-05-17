@@ -2,7 +2,7 @@
 name = "hexlify"
 version = "0.8.0"
 authors = ["Damian Poddebniak <poddebniak@mailbox.org>"]
-edition = "2024"
+edition = "2021"
 
 [dependencies]
 argh = "0.1.13"
