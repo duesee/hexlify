@@ -1,18 +1,10 @@
 {
   inputs = {
-    nixpkgs.url = "github:nixos/nixpkgs/nixos-24.11";
+    nixpkgs.url = "github:nixos/nixpkgs/nixos-25.05";
 
-    # The rustup equivalent for Nix.
     fenix = {
       url = "github:nix-community/fenix";
       inputs.nixpkgs.follows = "nixpkgs";
-    };
-
-    # Allows non-flakes users to still be able to `nix-shell` based on
-    # `shell.nix` instead of this `flake.nix`.
-    flake-compat = {
-      url = "github:edolstra/flake-compat";
-      flake = false;
     };
   };
 
@@ -24,37 +16,58 @@
       ...
     }:
     let
-      inherit (nixpkgs) lib;
-
-      eachSupportedSystem = lib.genAttrs supportedSystems;
       supportedSystems = [
         "x86_64-linux"
         "aarch64-linux"
         "x86_64-darwin"
         "aarch64-darwin"
       ];
+      forAllSystems = nixpkgs.lib.genAttrs supportedSystems;
 
-      mkDevShells =
+      mkPackage =
+        system:
+        let
+          pkgs = import nixpkgs { inherit system; };
+          manifest = (nixpkgs.lib.importTOML ./Cargo.toml).package;
+
+          toolchain = fenix.packages.${system}.stable.toolchain;
+          platform = pkgs.makeRustPlatform {
+            cargo = toolchain;
+            rustc = toolchain;
+          };
+        in
+        {
+          default = platform.buildRustPackage {
+            pname = manifest.name;
+            version = manifest.version;
+
+            src = ./.;
+            cargoLock.lockFile = ./Cargo.lock;
+
+            postInstall = ''
+              ln -s $out/bin/hexlify $out/bin/unhexlify           
+            '';
+          };
+        };
+
+      mkDevShell =
         system:
         let
           pkgs = import nixpkgs { inherit system; };
 
-          # get the rust toolchain from the rustup
-          # `rust-toolchain.toml` configuration file
-          rust-toolchain = fenix.packages.${system}.fromToolchainFile {
+          toolchain = fenix.packages.${system}.fromToolchainFile {
             file = ./rust-toolchain.toml;
             sha256 = "KUm16pHj+cRedf8vxs/Hd2YWxpOrWZ7UOrwhILdSJBU=";
           };
-
         in
         {
           default = pkgs.mkShell {
-            buildInputs = [ rust-toolchain ];
+            buildInputs = [ toolchain ];
           };
         };
-
     in
     {
-      devShells = eachSupportedSystem mkDevShells;
+      packages = forAllSystems mkPackage;
+      devShells = forAllSystems mkDevShell;
     };
 }
