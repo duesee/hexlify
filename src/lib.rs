@@ -11,9 +11,9 @@ Input had odd number of characters, please be cautious.\
 
 fn to_hex_value(c: u8) -> Option<u8> {
     match c as char {
-        '0'..='9' => Some(c - '0' as u8),
-        'a'..='f' => Some(c - 'a' as u8 + 10),
-        'A'..='F' => Some(c - 'A' as u8 + 10),
+        '0'..='9' => Some(c - b'0'),
+        'a'..='f' => Some(c - b'a' + 10),
+        'A'..='F' => Some(c - b'A' + 10),
         _ => None,
     }
 }
@@ -28,7 +28,7 @@ fn pair_to_hex(pair: &[u8; 2]) -> Option<u8> {
 
 pub fn decode<R: Read, W: Write>(src: &mut R, dst: &mut W, ignore_garbage: bool) -> io::Result<()> {
     let mut side = 0;
-    let mut pair = [0 as u8; 2];
+    let mut pair = [0u8; 2];
 
     for byte in src.bytes() {
         let byte = byte?;
